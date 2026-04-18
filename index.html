@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jack Kadis — Walk the USA Map</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#0d0f14;color:#e8e6e0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;height:100vh;overflow:hidden}
+  #map{position:absolute;inset:0;z-index:1}
+
+  /* Side panel */
+  #panel{position:absolute;left:0;top:0;bottom:0;width:260px;background:#111318;border-right:1px solid #2a2d36;z-index:10;display:flex;flex-direction:column;overflow:hidden;transition:transform .3s ease}
+  #panel.collapsed{transform:translateX(-260px)}
+  #panel-toggle{position:absolute;left:260px;top:50%;transform:translateY(-50%);background:#111318;border:1px solid #2a2d36;border-left:none;width:20px;height:52px;border-radius:0 6px 6px 0;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:11;font-size:11px;color:#888;transition:left .3s ease}
+  #panel.collapsed + #panel-toggle,
+  #panel.collapsed ~ #panel-toggle{left:0}
+
+  #panel-logo{padding:20px 16px 12px;border-bottom:1px solid #1e2028}
+  #panel-logo h1{font-size:15px;font-weight:600;color:#e8e6e0;letter-spacing:.3px}
+  #panel-logo p{font-size:11px;color:#666;margin-top:3px}
+
+  #stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px 16px;border-bottom:1px solid #1e2028}
+  .stat-card{background:#1a1d24;border-radius:8px;padding:10px 10px 8px;text-align:center}
+  .stat-card .val{font-size:18px;font-weight:600;color:#e8e6e0}
+  .stat-card .lbl{font-size:10px;color:#555;margin-top:2px;text-transform:uppercase;letter-spacing:.5px}
+
+  #progress-bar-wrap{padding:10px 16px 14px;border-bottom:1px solid #1e2028}
+  #progress-bar-wrap p{font-size:11px;color:#555;margin-bottom:6px;display:flex;justify-content:space-between}
+  #progress-bar{height:4px;background:#1e2028;border-radius:2px;overflow:hidden}
+  #progress-fill{height:100%;background:linear-gradient(90deg,#4a9eff,#66b8ff);border-radius:2px;transition:width 1s ease}
+
+  #links{padding:14px 16px;border-bottom:1px solid #1e2028}
+  #links p{font-size:10px;color:#555;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px}
+  .link-btn{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;background:#1a1d24;border:none;color:#c8c5be;font-size:13px;cursor:pointer;width:100%;margin-bottom:6px;text-decoration:none}
+  .link-btn:hover{background:#21252f;color:#e8e6e0}
+  .link-icon{width:22px;height:22px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0}
+  .ig{background:#c13584}
+  .kick{background:#53fc18;color:#000}
+  .venmo{background:#3d95ce}
+
+  #photo-section{padding:14px 16px;flex:1}
+  #photo-section p{font-size:10px;color:#555;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px}
+  #photo-feed{display:flex;flex-direction:column;gap:8px;overflow-y:auto;max-height:180px}
+  .photo-card{background:#1a1d24;border-radius:8px;overflow:hidden}
+  .photo-card img{width:100%;height:90px;object-fit:cover;display:block}
+  .photo-card .photo-meta{padding:6px 8px;font-size:10px;color:#555}
+
+  /* Credit */
+  #credit{position:absolute;bottom:8px;left:8px;z-index:20;font-size:9px;color:rgba(255,255,255,.15);pointer-events:none;letter-spacing:.5px}
+
+  /* Live badge */
+  #live-badge{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:20;background:#111318cc;backdrop-filter:blur(4px);border:1px solid #2a2d36;border-radius:20px;padding:6px 14px;display:flex;align-items:center;gap:6px;font-size:12px;color:#c8c5be}
+  .live-dot{width:7px;height:7px;border-radius:50%;background:#4a9eff;animation:pulse 2s infinite}
+  @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.8)}}
+
+  /* Easter egg overlay */
+  #egg-overlay{position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:1000;display:none;align-items:center;justify-content:center;flex-direction:column}
+  #egg-overlay.show{display:flex}
+  #egg-box{background:#111318;border:1px solid #2a2d36;border-radius:16px;padding:28px 24px;max-width:320px;width:90%;text-align:center}
+  #egg-box h2{font-size:20px;font-weight:600;margin-bottom:6px}
+  #egg-box p{font-size:13px;color:#888;margin-bottom:18px;line-height:1.5}
+  #egg-box .checkin-status{font-size:12px;color:#4a9eff;margin-bottom:14px;min-height:16px}
+  #file-input{display:none}
+  #upload-btn{background:#1a1d24;border:1px dashed #3a3d48;border-radius:10px;padding:20px;cursor:pointer;width:100%;color:#888;font-size:13px;transition:background .2s}
+  #upload-btn:hover{background:#21252f;color:#c8c5be}
+  #upload-preview{width:100%;border-radius:8px;margin-top:12px;display:none;max-height:200px;object-fit:cover}
+  #submit-checkin{margin-top:12px;background:#4a9eff;border:none;border-radius:8px;color:#000;font-size:13px;font-weight:600;padding:10px;width:100%;cursor:pointer;display:none}
+  #submit-checkin:hover{background:#66b8ff}
+  #close-egg{margin-top:10px;background:none;border:none;color:#555;font-size:12px;cursor:pointer;padding:4px}
+  #close-egg:hover{color:#888}
+
+  /* Plane animation */
+  .plane-marker{font-size:20px;animation:fly .8s ease-in-out infinite alternate}
+  @keyframes fly{from{transform:translateY(0)}to{transform:translateY(-3px)}}
+
+  /* Leaflet dark overrides */
+  .leaflet-control-zoom a{background:#111318!important;border-color:#2a2d36!important;color:#888!important}
+  .leaflet-control-zoom a:hover{background:#1a1d24!important;color:#c8c5be!important}
+  .leaflet-bar{border:1px solid #2a2d36!important;box-shadow:none!important}
+  .leaflet-popup-content-wrapper{background:#111318;border:1px solid #2a2d36;border-radius:10px;color:#c8c5be;box-shadow:none}
+  .leaflet-popup-tip{background:#2a2d36}
+  .leaflet-popup-close-button{color:#555!important}
+
+  @media(max-width:600px){
+    #panel{width:220px}
+    #panel-toggle{left:220px}
+  }
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div id="panel">
+  <div id="panel-logo">
+    <h1>Jack Kadis</h1>
+    <p>Walking an outline of the United States</p>
+  </div>
+  <div id="stats-grid">
+    <div class="stat-card"><div class="val">1,507</div><div class="lbl">Miles walked</div></div>
+    <div class="stat-card"><div class="val">Day 93</div><div class="lbl">On trail</div></div>
+    <div class="stat-card"><div class="val">11.5%</div><div class="lbl">Complete</div></div>
+    <div class="stat-card"><div class="val">5</div><div class="lbl">States</div></div>
+  </div>
+  <div id="progress-bar-wrap">
+    <p><span>Progress</span><span>1,507 / 13,067 mi</span></p>
+    <div id="progress-bar"><div id="progress-fill" style="width:0%"></div></div>
+  </div>
+  <div id="links">
+    <p>Follow Jack</p>
+    <a class="link-btn" href="https://instagram.com/jackkadis" target="_blank">
+      <span class="link-icon ig">📸</span>Instagram
+    </a>
+    <a class="link-btn" href="https://kick.com/jackkadis" target="_blank">
+      <span class="link-icon kick" style="font-size:10px;font-weight:700">K</span>Kick (live)
+    </a>
+    <a class="link-btn" href="https://venmo.com/u/jlkadis" target="_blank">
+      <span class="link-icon venmo">💙</span>Support on Venmo
+    </a>
+  </div>
+  <div id="photo-section">
+    <p>Recent check-ins</p>
+    <div id="photo-feed">
+      <div style="font-size:11px;color:#444;text-align:center;padding:20px 0">Be the first to check in!</div>
+    </div>
+  </div>
+</div>
+<button id="panel-toggle" onclick="togglePanel()">›</button>
+
+<div id="live-badge">
+  <div class="live-dot"></div>
+  <span>Live · Naples, FL · Day 93</span>
+</div>
+
+<div id="credit">H.F. Gray</div>
+
+<!-- Easter egg overlay -->
+<div id="egg-overlay">
+  <div id="egg-box">
+    <h2>📍 Check in with Jack!</h2>
+    <p>You're nearby! Upload a photo to mark your moment with Jack on the map.</p>
+    <div class="checkin-status" id="checkin-status"></div>
+    <div id="upload-btn" onclick="document.getElementById('file-input').click()">
+      Tap to choose a photo
+    </div>
+    <input type="file" id="file-input" accept="image/*" capture="environment" onchange="handlePhoto(this)">
+    <img id="upload-preview" src="" alt="preview">
+    <button id="submit-checkin" onclick="submitCheckin()">Submit check-in ✓</button>
+    <button id="close-egg" onclick="closeEgg()">Maybe later</button>
+  </div>
+</div>
+
+<script>
+// ── CONFIG ────────────────────────────────────────────────────────────────────
+// To update Jack's live location, just update LAT/LNG below and redeploy.
+// Or replace with a fetch() from Supabase/Firebase for real-time tracking.
+const JACK_LAT = 26.142; // Naples, FL area (update as he walks)
+const JACK_LNG = -81.795;
+const CHECK_IN_RADIUS_YARDS = 250;
+
+// ── ROUTE DATA ───────────────────────────────────────────────────────────────
+// WALKED: Virginia → NC outer banks → SC coast → GA coast → NE FL → down FL west coast to Naples
+const walkedRoute = [
+  // Start: Virginia Beach / Cape Henry
+  [36.926, -76.006],
+  [36.91, -75.99],
+  [36.836, -75.975],
+  [36.72, -75.960],
+  [36.59, -75.950],
+  // Outer Banks NC - south
+  [36.40, -75.932],
+  [36.18, -75.755],
+  [35.91, -75.698],
+  [35.57, -75.469],
+  [35.26, -75.528],
+  [35.10, -75.700],
+  [34.97, -76.032],
+  [34.78, -76.450],
+  [34.68, -76.695],
+  // NC coast south
+  [34.54, -76.78],
+  [34.42, -77.00],
+  [34.24, -77.32],
+  [34.03, -77.90],
+  // Myrtle Beach / SC coast
+  [33.80, -78.51],
+  [33.68, -78.88],
+  [33.56, -79.03],
+  [33.35, -79.28],
+  [33.10, -79.42],
+  [32.85, -79.72],
+  [32.73, -79.89],
+  // Savannah GA
+  [32.23, -80.67],
+  [32.04, -80.85],
+  [31.80, -81.05],
+  [31.57, -81.30],
+  [31.37, -81.40],
+  // GA islands
+  [31.20, -81.46],
+  [31.00, -81.50],
+  [30.75, -81.50],
+  // NE Florida - Amelia Island → Jacksonville
+  [30.60, -81.46],
+  [30.40, -81.43],
+  [30.22, -81.39],
+  // Space Coast
+  [30.00, -81.38],
+  [29.65, -81.21],
+  [29.22, -81.01],
+  [28.84, -80.83],
+  [28.60, -80.69],
+  [28.40, -80.63],
+  // Treasure Coast
+  [28.10, -80.59],
+  [27.80, -80.47],
+  [27.55, -80.37],
+  [27.30, -80.30],
+  // Palm Beach
+  [26.82, -80.10],
+  [26.62, -80.05],
+  [26.36, -80.12],
+  // Miami → FL Keys skip → Plane on Day 88 to Naples area
+  // (plane segment handled separately)
+  // Naples / Marco Island area
+  [26.142, -81.795]
+];
+
+// PLANNED: Continue from Naples around FL → Gulf coast → Texas → up to Maine and back
+// Simplified future route outline
+const plannedRoute = [
+  [26.142, -81.795], // Naples (current)
+  [25.78, -81.38],   // Homestead / Everglades edge
+  [25.17, -80.92],   // FL Keys start (walk the Keys?)
+  [24.70, -81.10],
+  [24.55, -81.80],
+  [24.56, -82.00],
+  [25.20, -81.84],
+  [25.77, -81.60],   // Marco Island / Naples back around
+  [26.50, -82.00],
+  [27.05, -82.53],   // Sarasota
+  [27.46, -82.69],
+  [27.90, -82.78],
+  [28.33, -82.71],
+  [28.89, -82.72],   // Crystal River
+  [29.45, -83.05],
+  [29.83, -84.15],   // Tallahassee coast
+  [30.18, -85.73],   // Panama City
+  [30.36, -87.17],   // Pensacola
+  [30.30, -88.20],
+  [30.22, -89.10],   // Biloxi MS
+  [29.95, -90.07],   // New Orleans
+  [29.70, -90.80],
+  [29.52, -91.20],
+  [29.37, -92.10],
+  [29.30, -93.30],
+  [29.09, -95.00],   // Houston area
+  [28.76, -96.00],
+  [28.35, -97.00],
+  [27.50, -97.50],   // Corpus Christi
+  [26.21, -97.21],   // Brownsville / Mexican border
+  // Up the western border...
+  [29.70, -104.50],  // Big Bend
+  [31.75, -106.49],  // El Paso
+  [32.50, -117.12],  // San Diego
+  [33.80, -118.35],  // LA
+  [36.97, -122.02],  // Santa Cruz
+  [37.78, -122.51],  // SF
+  [38.37, -123.07],
+  [39.75, -123.83],
+  [40.80, -124.18],  // Eureka CA
+  [42.00, -124.35],
+  [44.62, -124.06],  // Newport OR
+  [46.18, -123.83],
+  [47.61, -122.56],  // Seattle
+  [48.80, -122.74],
+  [49.00, -122.74],  // Canadian border WA
+  // Skip Canada, pick up at MT
+  [48.99, -114.07],
+  [48.80, -110.00],
+  [48.99, -104.05],  // ND border
+  [48.99, -96.99],
+  [48.99, -90.00],
+  [47.30, -84.60],   // Sault Ste Marie
+  [45.00, -83.41],
+  [44.10, -82.50],
+  [43.60, -82.60],
+  [42.60, -82.60],
+  [42.30, -83.10],   // Detroit
+  [41.50, -83.40],
+  [41.60, -82.40],
+  [42.89, -79.05],   // Buffalo / Niagara
+  [43.10, -79.07],
+  [43.55, -76.19],
+  [44.50, -73.18],   // Burlington VT
+  [45.00, -71.51],
+  [44.82, -67.00],   // Maine
+  [44.62, -67.14],
+  [43.65, -70.25],   // Portland ME
+  [42.36, -71.06],   // Boston
+  [41.49, -71.13],   // Newport RI
+  [41.15, -71.85],
+  [40.64, -72.70],   // Long Island
+  [40.52, -74.01],
+  [39.95, -74.10],
+  [39.35, -74.43],
+  [38.95, -74.90],
+  [38.70, -75.08],
+  [38.45, -75.05],
+  [37.91, -75.36],
+  [37.55, -75.85],
+  [37.17, -76.01],
+  [36.926, -76.006], // Back to start - Virginia Beach
+];
+
+// Plane segment (Day 88 - flew from Miami area to Naples)
+const planeFrom = [25.77, -80.19]; // Miami area
+const planeTo = [26.14, -81.80];   // Naples area
+
+// ── MAP INIT ─────────────────────────────────────────────────────────────────
+const map = L.map('map', {
+  center: [35, -90],
+  zoom: 5,
+  zoomControl: true,
+  attributionControl: false
+});
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  maxZoom: 19,
+  attribution: '© OpenStreetMap contributors © CARTO'
+}).addTo(map);
+
+L.control.attribution({position:'bottomright',prefix:false}).addTo(map).addAttribution('© OpenStreetMap / CARTO');
+
+// ── DRAW ROUTES ───────────────────────────────────────────────────────────────
+// Walked route - solid bright blue
+L.polyline(walkedRoute, {
+  color: '#4a9eff',
+  weight: 3.5,
+  opacity: 0.9,
+  lineJoin: 'round',
+  lineCap: 'round'
+}).addTo(map);
+
+// Planned route - dotted dim blue
+L.polyline(plannedRoute, {
+  color: '#4a9eff',
+  weight: 2.5,
+  opacity: 0.3,
+  dashArray: '6 8',
+  lineJoin: 'round'
+}).addTo(map);
+
+// ── PLANE SEGMENT ─────────────────────────────────────────────────────────────
+const planePolyline = L.polyline([planeFrom, planeTo], {
+  color: '#aaaaff',
+  weight: 1.8,
+  opacity: 0.6,
+  dashArray: '3 6'
+}).addTo(map);
+
+// Animate plane icon along the segment
+const planeIcon = L.divIcon({
+  html: '<div class="plane-marker">✈</div>',
+  iconSize: [24, 24],
+  iconAnchor: [12, 12],
+  className: ''
+});
+
+// Fixed plane marker at midpoint of flight
+const planeMid = [(planeFrom[0]+planeTo[0])/2, (planeFrom[1]+planeTo[1])/2];
+L.marker(planeMid, {icon: planeIcon})
+  .addTo(map)
+  .bindPopup('<b>Day 88 — Flew ✈</b><br>Miami → Naples<br><span style="color:#888;font-size:12px">+93 mi (plane)</span>');
+
+// ── LIVE LOCATION MARKER ──────────────────────────────────────────────────────
+const pulseIcon = L.divIcon({
+  html: `<div style="position:relative;width:16px;height:16px">
+    <div style="position:absolute;inset:0;border-radius:50%;background:#4a9eff;opacity:.25;animation:ripple 2s infinite"></div>
+    <div style="position:absolute;inset:3px;border-radius:50%;background:#4a9eff"></div>
+  </div>
+  <style>@keyframes ripple{0%{transform:scale(1);opacity:.4}100%{transform:scale(3);opacity:0}}</style>`,
+  iconSize: [16, 16],
+  iconAnchor: [8, 8],
+  className: ''
+});
+
+const liveMarker = L.marker([JACK_LAT, JACK_LNG], {icon: pulseIcon, zIndexOffset: 1000})
+  .addTo(map)
+  .bindPopup(`<b>Jack is here</b><br>Naples, FL · Day 93<br><span style="color:#4a9eff;font-size:12px">1,507 miles walked</span>`);
+
+// ── START MARKER ─────────────────────────────────────────────────────────────
+L.circleMarker([36.926, -76.006], {
+  radius: 6,
+  fillColor: '#4aff98',
+  color: '#2a2d36',
+  weight: 2,
+  fillOpacity: 1
+}).addTo(map).bindPopup('<b>Start — Day 0</b><br>Virginia Beach, VA<br><span style="color:#888;font-size:12px">January 15, 2026</span>');
+
+// ── PROGRESS BAR ─────────────────────────────────────────────────────────────
+setTimeout(() => {
+  document.getElementById('progress-fill').style.width = '11.5%';
+}, 300);
+
+// ── PANEL TOGGLE ─────────────────────────────────────────────────────────────
+let panelOpen = true;
+function togglePanel() {
+  const panel = document.getElementById('panel');
+  const btn = document.getElementById('panel-toggle');
+  panelOpen = !panelOpen;
+  panel.classList.toggle('collapsed', !panelOpen);
+  btn.style.left = panelOpen ? (window.innerWidth < 600 ? '220px' : '260px') : '0';
+  btn.textContent = panelOpen ? '‹' : '›';
+}
+
+// ── EASTER EGG — triple tap ───────────────────────────────────────────────────
+let tapCount = 0;
+let tapTimer = null;
+let hasCheckedIn = localStorage.getItem('jack_checkin_done') === 'true';
+let selectedFile = null;
+
+document.getElementById('map').addEventListener('click', function() {
+  tapCount++;
+  clearTimeout(tapTimer);
+  tapTimer = setTimeout(() => { tapCount = 0; }, 600);
+  if (tapCount >= 3) {
+    tapCount = 0;
+    openEgg();
+  }
+});
+
+function openEgg() {
+  const overlay = document.getElementById('egg-overlay');
+  const status = document.getElementById('checkin-status');
+  if (hasCheckedIn) {
+    status.textContent = '✓ You already checked in with Jack!';
+    document.getElementById('upload-btn').style.display = 'none';
+    document.getElementById('submit-checkin').style.display = 'none';
+  } else {
+    checkProximity();
+  }
+  overlay.classList.add('show');
+}
+
+function closeEgg() {
+  document.getElementById('egg-overlay').classList.remove('show');
+  selectedFile = null;
+  document.getElementById('upload-preview').style.display = 'none';
+  document.getElementById('submit-checkin').style.display = 'none';
+  document.getElementById('upload-btn').style.display = 'block';
+}
+
+function checkProximity() {
+  const status = document.getElementById('checkin-status');
+  if (!navigator.geolocation) {
+    status.textContent = 'Location unavailable on this device.';
+    return;
+  }
+  status.textContent = 'Checking your location...';
+  navigator.geolocation.getCurrentPosition(pos => {
+    const dist = haversineYards(pos.coords.latitude, pos.coords.longitude, JACK_LAT, JACK_LNG);
+    if (dist <= CHECK_IN_RADIUS_YARDS) {
+      status.textContent = `You're ${Math.round(dist)} yards from Jack! Upload a photo.`;
+      status.style.color = '#4aff98';
+    } else {
+      status.textContent = `You're ${dist > 1760 ? (dist/1760).toFixed(1)+' miles' : Math.round(dist)+' yards'} from Jack's location. Get closer to check in!`;
+      status.style.color = '#ff7a7a';
+      document.getElementById('upload-btn').style.pointerEvents = 'none';
+      document.getElementById('upload-btn').style.opacity = '0.4';
+    }
+  }, () => {
+    status.textContent = 'Could not get your location. Allow location access and try again.';
+    status.style.color = '#ff7a7a';
+  });
+}
+
+function haversineYards(lat1, lon1, lat2, lon2) {
+  const R = 1936.42; // earth radius in yards (actually miles*1760, using R=3958.8mi → yards)
+  const R_yards = 6371000 * 1.09361;
+  const dLat = (lat2-lat1)*Math.PI/180;
+  const dLon = (lon2-lon1)*Math.PI/180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  return 2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a))*R_yards;
+}
+
+function handlePhoto(input) {
+  if (!input.files || !input.files[0]) return;
+  selectedFile = input.files[0];
+  const reader = new FileReader();
+  reader.onload = e => {
+    const preview = document.getElementById('upload-preview');
+    preview.src = e.target.result;
+    preview.style.display = 'block';
+    document.getElementById('submit-checkin').style.display = 'block';
+  };
+  reader.readAsDataURL(selectedFile);
+}
+
+function submitCheckin() {
+  if (!selectedFile) return;
+  // In production: POST photo to your backend/Supabase storage here
+  // For now, save to localStorage as a small thumbnail and show in feed
+  const reader = new FileReader();
+  reader.onload = e => {
+    const photos = JSON.parse(localStorage.getItem('jack_photos') || '[]');
+    const timestamp = new Date().toLocaleDateString();
+    photos.unshift({src: e.target.result, date: timestamp});
+    if (photos.length > 5) photos.pop();
+    localStorage.setItem('jack_photos', JSON.stringify(photos));
+    localStorage.setItem('jack_checkin_done', 'true');
+    hasCheckedIn = true;
+    renderPhotoFeed();
+    document.getElementById('checkin-status').textContent = '✓ Check-in submitted! You\'re on the map.';
+    document.getElementById('checkin-status').style.color = '#4aff98';
+    document.getElementById('submit-checkin').style.display = 'none';
+    setTimeout(closeEgg, 2000);
+  };
+  reader.readAsDataURL(selectedFile);
+}
+
+function renderPhotoFeed() {
+  const feed = document.getElementById('photo-feed');
+  const photos = JSON.parse(localStorage.getItem('jack_photos') || '[]');
+  if (!photos.length) {
+    feed.innerHTML = '<div style="font-size:11px;color:#444;text-align:center;padding:20px 0">Be the first to check in!</div>';
+    return;
+  }
+  feed.innerHTML = photos.map(p => `
+    <div class="photo-card">
+      <img src="${p.src}" alt="Check-in photo">
+      <div class="photo-meta">Checked in · ${p.date}</div>
+    </div>
+  `).join('');
+}
+
+renderPhotoFeed();
+
+// ── FIT MAP TO WALKED ROUTE ───────────────────────────────────────────────────
+const bounds = L.latLngBounds(walkedRoute);
+map.fitBounds(bounds, {padding:[40,40]});
+// Offset for panel
+map.panBy([-130, 0], {animate:false});
+</script>
+
+</body>
+</html>
